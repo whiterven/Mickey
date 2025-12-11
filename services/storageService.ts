@@ -1,69 +1,31 @@
 
 import { Message, ChatSession, ChatMode } from '../types';
 
-const DB_NAME = 'GeminiAppDB';
-const DB_VERSION = 1;
-const STORE_SESSIONS = 'sessions';
-const STORE_MESSAGES = 'messages';
-
-// --- IndexedDB Helpers ---
-
-const openDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_SESSIONS)) {
-        db.createObjectStore(STORE_SESSIONS, { keyPath: 'id' });
-      }
-      if (!db.objectStoreNames.contains(STORE_MESSAGES)) {
-        db.createObjectStore(STORE_MESSAGES, { keyPath: 'sessionId' });
-      }
-    };
-
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
+const KEYS = {
+  SESSIONS: 'mikey_sessions',
+  MESSAGES_PREFIX: 'mikey_messages_',
 };
 
 // --- API ---
 
 export const getChatSessions = async (): Promise<ChatSession[]> => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_SESSIONS, 'readonly');
-      const store = transaction.objectStore(STORE_SESSIONS);
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        // Sort by timestamp descending (newest first)
-        const sessions = (request.result as ChatSession[]).sort((a, b) => b.timestamp - a.timestamp);
-        resolve(sessions);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    const raw = localStorage.getItem(KEYS.SESSIONS);
+    if (!raw) return [];
+    // Sort desc by timestamp
+    const sessions = (JSON.parse(raw) as ChatSession[]).sort((a, b) => b.timestamp - a.timestamp);
+    return sessions;
   } catch (e) {
-    console.error("Failed to get sessions", e);
+    console.error("Failed to load sessions", e);
     return [];
   }
 };
 
 export const loadChatMessages = async (sessionId: string): Promise<Message[]> => {
   try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const transaction = db.transaction(STORE_MESSAGES, 'readonly');
-      const store = transaction.objectStore(STORE_MESSAGES);
-      const request = store.get(sessionId);
-
-      request.onsuccess = () => {
-        const result = request.result;
-        resolve(result ? result.messages : []);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    const key = `${KEYS.MESSAGES_PREFIX}${sessionId}`;
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
   } catch (e) {
     console.error("Failed to load messages", e);
     return [];
@@ -72,16 +34,13 @@ export const loadChatMessages = async (sessionId: string): Promise<Message[]> =>
 
 export const deleteChat = async (sessionId: string) => {
   try {
-    const db = await openDB();
-    const transaction = db.transaction([STORE_SESSIONS, STORE_MESSAGES], 'readwrite');
-    
-    transaction.objectStore(STORE_SESSIONS).delete(sessionId);
-    transaction.objectStore(STORE_MESSAGES).delete(sessionId);
-    
-    return new Promise<void>((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
-    });
+    // 1. Remove from sessions list
+    const sessions = await getChatSessions();
+    const updatedSessions = sessions.filter(s => s.id !== sessionId);
+    localStorage.setItem(KEYS.SESSIONS, JSON.stringify(updatedSessions));
+
+    // 2. Remove messages
+    localStorage.removeItem(`${KEYS.MESSAGES_PREFIX}${sessionId}`);
   } catch (e) {
     console.error("Failed to delete chat", e);
   }
@@ -89,16 +48,17 @@ export const deleteChat = async (sessionId: string) => {
 
 export const clearAllData = async () => {
   try {
-    const db = await openDB();
-    const transaction = db.transaction([STORE_SESSIONS, STORE_MESSAGES], 'readwrite');
+    localStorage.removeItem(KEYS.SESSIONS);
     
-    transaction.objectStore(STORE_SESSIONS).clear();
-    transaction.objectStore(STORE_MESSAGES).clear();
-    
-    return new Promise<void>((resolve, reject) => {
-        transaction.oncomplete = () => resolve();
-        transaction.onerror = () => reject(transaction.error);
-    });
+    // Find all message keys
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(KEYS.MESSAGES_PREFIX)) {
+            keysToRemove.push(key);
+        }
+    }
+    keysToRemove.forEach(k => localStorage.removeItem(k));
   } catch (e) {
     console.error("Failed to clear data", e);
   }
@@ -108,14 +68,15 @@ export const clearAllData = async () => {
 
 const saveTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 
-const performSave = async (sessionId: string, messages: Message[], mode: ChatMode) => {
+const performSave = (sessionId: string, messages: Message[], mode: ChatMode) => {
   if (!sessionId) return;
 
   try {
-    const db = await openDB();
-    const transaction = db.transaction([STORE_SESSIONS, STORE_MESSAGES], 'readwrite');
+    // 1. Get existing sessions
+    const rawSessions = localStorage.getItem(KEYS.SESSIONS);
+    let sessions: ChatSession[] = rawSessions ? JSON.parse(rawSessions) : [];
 
-    // 1. Calculate Title
+    // 2. Calculate Title
     let title = "New Chat";
     const firstUserMsg = messages.find(m => m.role === 'user');
     if (firstUserMsg) {
@@ -131,22 +92,31 @@ const performSave = async (sessionId: string, messages: Message[], mode: ChatMod
         else if (lastMsg.video) title = "Generated Video";
     }
 
-    // 2. Save Session Metadata
+    // 3. Update Session Data
+    const existingIndex = sessions.findIndex(s => s.id === sessionId);
     const sessionData: ChatSession = {
         id: sessionId,
         title,
         timestamp: Date.now(),
         mode
     };
-    transaction.objectStore(STORE_SESSIONS).put(sessionData);
 
-    // 3. Save Messages (Blob/Container)
-    // We store all messages for a session in one record for simplicity in this demo,
-    // keyed by sessionId.
-    transaction.objectStore(STORE_MESSAGES).put({ sessionId, messages });
+    if (existingIndex >= 0) {
+        sessions[existingIndex] = sessionData;
+    } else {
+        sessions.push(sessionData);
+    }
+
+    // 4. Save to LocalStorage
+    localStorage.setItem(KEYS.SESSIONS, JSON.stringify(sessions));
+    localStorage.setItem(`${KEYS.MESSAGES_PREFIX}${sessionId}`, JSON.stringify(messages));
 
   } catch (e) {
     console.error("Failed to save chat", e);
+    // Simple quota handling
+    if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+        console.warn("LocalStorage quota reached. Consider clearing old chats.");
+    }
   }
 };
 
@@ -169,36 +139,29 @@ export const saveChatImmediately = async (sessionId: string, messages: Message[]
     clearTimeout(saveTimers[sessionId]);
     delete saveTimers[sessionId];
   }
-  await performSave(sessionId, messages, mode);
+  performSave(sessionId, messages, mode);
 };
 
 // --- Storage Stats ---
 
 export const getStorageUsage = async (): Promise<{ usageBytes: number, itemCount: number }> => {
     try {
-        const db = await openDB();
-        return new Promise((resolve) => {
-            let size = 0;
-            let count = 0;
-            // This is an estimation. Accurate IDB size is hard to get cross-browser without iterating.
-            const transaction = db.transaction([STORE_MESSAGES], 'readonly');
-            const store = transaction.objectStore(STORE_MESSAGES);
-            const request = store.openCursor();
-            
-            request.onsuccess = (e) => {
-                const cursor = (e.target as IDBRequest).result;
-                if (cursor) {
-                    const value = cursor.value;
-                    // Rough estimation of string size
-                    const json = JSON.stringify(value);
-                    size += new Blob([json]).size;
-                    count++;
-                    cursor.continue();
-                } else {
-                    resolve({ usageBytes: size, itemCount: count });
+        let size = 0;
+        let count = 0;
+        
+        for (const key in localStorage) {
+            if (localStorage.hasOwnProperty(key)) {
+                // Count our keys
+                if (key === KEYS.SESSIONS || key.startsWith(KEYS.MESSAGES_PREFIX)) {
+                    const value = localStorage.getItem(key);
+                    if (value) {
+                        size += value.length * 2; // Approx UTF-16 size
+                        count++;
+                    }
                 }
-            };
-        });
+            }
+        }
+        return { usageBytes: size, itemCount: count };
     } catch (e) {
         return { usageBytes: 0, itemCount: 0 };
     }

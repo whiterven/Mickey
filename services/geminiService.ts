@@ -1,5 +1,4 @@
 
-
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { Message, ChatMode, MessageRole, ImageResolution } from '../types';
 import { createPcmBlob, base64ToUint8Array, decodeAudioData } from './audioUtils';
@@ -269,13 +268,15 @@ export class LiveClient {
   private outputAudioContext: AudioContext | null = null;
   private nextStartTime = 0;
   private sources = new Set<AudioBufferSourceNode>();
+  public isMuted = false;
   
   constructor(
     private onTranscript: (text: string, isUser: boolean, isFinal: boolean) => void,
-    private onAudioActivity: (isActive: boolean) => void
+    private onAudioActivity: (isActive: boolean) => void,
+    private onVolumeUpdate: (volume: number) => void
   ) {}
 
-  async connect(language: string = "English") {
+  async connect(language: string = "English", voiceName: string = "Kore") {
     const ai = getAiClient();
     this.inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
     this.outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -286,7 +287,22 @@ export class LiveClient {
     const processor = this.inputAudioContext.createScriptProcessor(4096, 1, 1);
     
     processor.onaudioprocess = (e) => {
+        // If muted, do not process or send audio
+        if (this.isMuted) {
+            this.onVolumeUpdate(0);
+            return;
+        }
+
         const inputData = e.inputBuffer.getChannelData(0);
+        
+        // Calculate Volume (RMS)
+        let sum = 0;
+        for (let i = 0; i < inputData.length; i++) {
+            sum += inputData[i] * inputData[i];
+        }
+        const rms = Math.sqrt(sum / inputData.length);
+        this.onVolumeUpdate(rms); // Emit volume
+
         const pcmBlob = createPcmBlob(inputData);
         if (this.session) {
             this.session.then((s: any) => s.sendRealtimeInput({ media: pcmBlob }));
@@ -344,11 +360,18 @@ export class LiveClient {
       },
       config: {
         responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
+        },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         systemInstruction: `You are Mike, a friendly, helpful, and intelligent AI assistant. You always refer to yourself as Mike. Keep responses concise and conversational. Please speak in ${language}.`
       }
     });
+  }
+
+  setMute(muted: boolean) {
+      this.isMuted = muted;
   }
 
   private playAudio(buffer: AudioBuffer) {

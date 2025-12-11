@@ -70,6 +70,14 @@ export const SUPPORTED_LANGUAGES = [
   "Arabic"
 ];
 
+export const SUPPORTED_VOICES = [
+  { id: 'Puck', label: 'Billy', description: 'Soft & Gentle' },
+  { id: 'Charon', label: 'Marcus', description: 'Deep & Authoritative' },
+  { id: 'Kore', label: 'Sarah', description: 'Calm & Soothing' },
+  { id: 'Fenrir', label: 'Leo', description: 'Energetic & Fast' },
+  { id: 'Zephyr', label: 'Emily', description: 'Warm & Friendly' },
+];
+
 export type GeminiModelId = 'gemini-flash-lite-latest' | 'gemini-flash-latest' | 'gemini-3-pro-preview';
 
 export const MODEL_OPTIONS: {id: GeminiModelId, label: string}[] = [
