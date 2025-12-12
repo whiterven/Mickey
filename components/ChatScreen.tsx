@@ -559,7 +559,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ onBack, onNewChat, onOpenVoiceM
                             h3: ({children}) => <h3 className="text-base font-bold mb-2 mt-2">{children}</h3>,
                             p: ({children}) => <p className="mb-2 last:mb-0">{children}</p>,
                             ul: ({children}) => <ul className="list-disc pl-4 mb-2">{children}</ul>,
-                            ol: ({children}) => <ol className="list-decimal pl-4 mb-2">{children}</ul>,
+                            ol: ({children}) => <ol className="list-decimal pl-4 mb-2">{children}</ol>,
                             li: ({children}) => <li className="mb-1">{children}</li>,
                             blockquote: ({children}) => <blockquote className="border-l-4 border-primaryPink pl-3 italic my-2 text-gray-600">{children}</blockquote>
                         }}
