@@ -1,0 +1,28 @@
+{
+  "short_name": "Mikey",
+  "name": "Mikey AI Assistant",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E🐁%3C/text%3E%3C/svg%3E",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23abd5ff'/%3E%3Ctext x='50' y='70' font-size='60' text-anchor='middle' fill='black'%3E🐁%3C/text%3E%3C/svg%3E",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23abd5ff'/%3E%3Ctext x='50' y='70' font-size='60' text-anchor='middle' fill='black'%3E🐁%3C/text%3E%3C/svg%3E",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#f8f9fa",
+  "background_color": "#f8f9fa",
+  "orientation": "portrait"
+}

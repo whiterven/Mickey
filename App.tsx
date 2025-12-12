@@ -4,6 +4,7 @@ import HomeScreen from './components/HomeScreen';
 import ChatScreen from './components/ChatScreen';
 import VoiceMode from './components/VoiceMode';
 import ProfileScreen from './components/ProfileScreen';
+import OnboardingScreen from './components/OnboardingScreen';
 import { ScreenName, ChatMode } from './types';
 import { AnimatePresence, motion } from 'framer-motion';
 
@@ -14,15 +15,24 @@ const App: React.FC = () => {
   const [initialPrompt, setInitialPrompt] = useState<string>("");
   const [isKeyReady, setIsKeyReady] = useState(false);
   const [language, setLanguage] = useState("English");
+  
+  // Onboarding State
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // Check for API Key on mount
+  // Check for API Key & Onboarding on mount
   useEffect(() => {
-    const checkKey = async () => {
+    const checkInit = async () => {
+      // 1. Check Onboarding
+      const hasOnboarded = localStorage.getItem('mikey_onboarding_completed');
+      if (!hasOnboarded) {
+          setShowOnboarding(true);
+      }
+
+      // 2. Check API Key
       const win = window as any;
       if (win.aistudio) {
         const hasKey = await win.aistudio.hasSelectedApiKey();
         if (!hasKey) {
-            // Force user to select key if not present
             try {
                 const success = await win.aistudio.openSelectKey();
                 setIsKeyReady(!!success);
@@ -33,12 +43,16 @@ const App: React.FC = () => {
             setIsKeyReady(true);
         }
       } else {
-        // Fallback or dev mode if aistudio wrapper isn't present
         setIsKeyReady(true);
       }
     };
-    checkKey();
+    checkInit();
   }, []);
+
+  const handleOnboardingComplete = () => {
+      localStorage.setItem('mikey_onboarding_completed', 'true');
+      setShowOnboarding(false);
+  };
 
   const startNewChat = (mode: ChatMode, prompt: string = "") => {
     const newId = crypto.randomUUID();
@@ -49,7 +63,6 @@ const App: React.FC = () => {
   };
 
   const handleStartVoice = () => {
-    // Generate a session ID for the voice conversation so it can be saved
     const newId = crypto.randomUUID();
     setCurrentSessionId(newId);
     setCurrentScreen(ScreenName.VOICE);
@@ -70,7 +83,7 @@ const App: React.FC = () => {
   const handleLoadChat = (sessionId: string, mode: ChatMode) => {
       setCurrentSessionId(sessionId);
       setChatMode(mode);
-      setInitialPrompt(""); // No prompt for loaded chats
+      setInitialPrompt(""); 
       setCurrentScreen(ScreenName.CHAT);
   };
 
@@ -110,7 +123,6 @@ const App: React.FC = () => {
       );
   }
 
-  // Animation variants
   const variants = {
       initial: { opacity: 0, scale: 0.95, filter: 'blur(5px)' },
       animate: { opacity: 1, scale: 1, filter: 'blur(0px)' },
@@ -191,6 +203,20 @@ const App: React.FC = () => {
                 sessionId={currentSessionId}
             />
         )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+          {showOnboarding && (
+              <motion.div
+                key="onboarding"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-[100]"
+              >
+                  <OnboardingScreen onComplete={handleOnboardingComplete} />
+              </motion.div>
+          )}
       </AnimatePresence>
     </div>
   );

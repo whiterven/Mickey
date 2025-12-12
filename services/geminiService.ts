@@ -3,11 +3,14 @@ import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { Message, ChatMode, MessageRole, ImageResolution } from '../types';
 import { createPcmBlob, base64ToUint8Array, decodeAudioData } from './audioUtils';
 
-// Helper to initialize GenAI with the latest API key
+// Helper to initialize GenAI with the latest API key from .env
 const getAiClient = () => {
-  const apiKey = process.env.API_KEY;
+  // Safe access to process.env.API_KEY to avoid ReferenceError in some browser contexts
+  // This explicitly looks for the key injected by the build environment.
+  const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+  
   if (!apiKey) {
-    console.warn("API Key is missing or empty.");
+    console.warn("API Key is missing. Ensure process.env.API_KEY is configured in your environment.");
   }
   return new GoogleGenAI({ apiKey: apiKey || '' });
 };
@@ -181,9 +184,13 @@ export const sendMessageToGemini = async (
             operation = await ai.operations.getVideosOperation({operation});
         }
 
-        const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
-        if (videoUri) {
-             const videoRes = await fetch(`${videoUri}&key=${process.env.API_KEY}`);
+        const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+        if (downloadLink) {
+             // Append API Key to the download link as required by the docs
+             // Use explicit process.env.API_KEY check again here
+             const apiKey = (typeof process !== 'undefined' && process.env) ? process.env.API_KEY : '';
+             const videoRes = await fetch(`${downloadLink}&key=${apiKey}`);
+             
              const videoBlob = await videoRes.blob();
              const videoUrl = URL.createObjectURL(videoBlob);
              
